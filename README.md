@@ -1,150 +1,179 @@
-# OpenClaw Installation Guide
+# OpenClaw on GCP: Budget Installation Guide
 
-Полная инструкция по установке OpenClaw на GCP VM с Telegram интеграцией.
+A tested, step-by-step guide for running [OpenClaw](https://openclaw.ai/) on a Google Cloud VM for under $20/month. Covers Telegram integration, security hardening, and real-world pitfalls discovered during deployment.
 
-> **Disclaimer:** Данная инструкция предоставляется "как есть" без каких-либо гарантий. Используйте на свой страх и риск. Автор инструкции не несёт ответственности за возможные потери данных, утечки credentials или другие последствия.
-
----
-
-## Что такое OpenClaw?
-
-OpenClaw — это messaging gateway, который соединяет AI-агентов с популярными чат-платформами: WhatsApp, Telegram, Discord, iMessage и Mattermost. Позволяет взаимодействовать с AI-агентами через привычные мессенджеры.
-
-**Ключевые возможности:**
-- Мульти-платформенная поддержка (WhatsApp, Telegram, Discord, iMessage)
-- Групповые чаты с mention-активацией
-- Поддержка медиа (изображения, аудио, документы)
-- WebChat и macOS/мобильные приложения
-- MIT лицензия — полностью open source
+> **Tested with:** OpenClaw 2026.2.6 on GCP e2-small, Ubuntu 24.04 LTS, Node.js 22.22.0
+>
+> **Last updated:** February 2026
 
 ---
 
-## Важные замечания по безопасности
+## What is OpenClaw?
 
-**Прочитайте перед установкой!**
+[OpenClaw](https://github.com/openclaw/openclaw) is an open-source AI agent gateway. It connects language models (Claude, GPT, Gemini, etc.) to messaging platforms — Telegram, WhatsApp, Discord, iMessage, Slack, Signal, and more. You self-host it, it runs 24/7, and your AI agent can send/receive messages, execute tasks, run on schedules, and maintain memory across conversations.
 
-### Архитектурные особенности
+**Key capabilities:**
+- Multi-platform messaging with a single agent
+- Group chats with mention-gating
+- Cron jobs, heartbeat checks, webhooks
+- Skills system (extensible behavior modules)
+- Long-term memory (daily logs + curated facts via vector search)
+- Media pipeline (images, audio, documents)
+- WebChat, macOS/iOS/Android clients
+- MIT license
 
-- **Credentials в файлах** — API ключи хранятся в файловой системе
-- **Доступ к системе** — AI агент может выполнять команды в рамках своих прав
-- **Prompt injection** — модели уязвимы к манипуляциям через входящие сообщения
+**Official resources:**
+- Docs: https://docs.openclaw.ai/
+- GitHub: https://github.com/openclaw/openclaw
+- Security: https://docs.openclaw.ai/gateway/security
 
-### Рекомендации по безопасности
+---
 
-1. **Gateway только на loopback** — никогда не открывайте порт 18789 в интернет
-2. **Используйте изолированную VM** — не ставьте на основной рабочий компьютер
-3. **Pairing mode по умолчанию** — новые пользователи требуют одобрения
-4. **Регулярно запускайте** `openclaw security audit`
-5. **Права доступа 600/700** на конфиги и credentials
-6. **Используйте современные модели** (Opus 4.5) для агентов с инструментами
+## Security Warnings
 
-### Полезные ресурсы
+Read this section before installation.
 
-- [Официальная документация](https://docs.openclaw.ai/)
-- [Security Best Practices](https://docs.openclaw.ai/gateway/security)
+### Known Issues (February 2026)
+
+1. **Malicious Skills on ClawHub** — 341 skills found stealing credentials via Atomic Stealer malware. **Do not** install third-party skills without reviewing source code.
+2. **RCE + Command Injection CVEs** — Multiple vulnerabilities patched in recent releases. Always run the latest version.
+3. **Node.js 22.12.0+** required — Earlier versions have unpatched vulnerabilities.
+
+### Architectural Risks (by design)
+
+These are trade-offs of running an AI agent with tool access:
+
+- **Credentials stored as files** on the filesystem (config, OAuth tokens, channel tokens)
+- **AI agent can execute shell commands** within its permission scope
+- **Prompt injection is unsolved** — incoming messages can attempt to manipulate the model
+- **Session transcripts** contain conversation history — readable by anyone with filesystem access
+
+### Non-Negotiable Security Measures
+
+1. **Gateway on loopback** — never expose port 18789 to the internet
+2. **No public IP on the VM** — use Tailscale (or similar VPN) for remote access
+3. **Pairing mode for DMs** — require explicit approval for new contacts
+4. **Run `openclaw security audit --deep`** after every configuration change
+5. **File permissions** — 700 for directories, 600 for config/credential files
+6. **Modern models only** for tool-enabled agents — they resist prompt injection better
+7. **Never install unverified skills** from any marketplace
 
 ---
 
 ## Prerequisites
 
-Перед началом убедитесь, что у вас есть:
+- GCP account with active billing (free trial credits work)
+- [Tailscale](https://tailscale.com/) account (free tier is sufficient)
+- Telegram account (for creating a bot via @BotFather)
+- `gcloud` CLI installed on your local machine
+- AI provider API key (Anthropic, OpenAI, Google, etc.) or a subscription with OAuth support
 
-- **GCP аккаунт** с активным billing (или free trial credits)
-- **Tailscale аккаунт** (бесплатный на tailscale.com)
-- **Telegram аккаунт** для создания бота
-- **gcloud CLI** установлен локально
-- **Базовые знания Linux** (терминал, SSH, редактирование файлов)
-- **API ключ AI провайдера** (Anthropic, OpenAI, или другой)
+### System Requirements
 
-### Системные требования
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| CPU | 1 vCPU | 2 vCPU |
+| RAM | 2 GB (+ swap) | 4 GB |
+| Disk | 20 GB SSD | 30 GB SSD |
+| OS | Ubuntu 22.04 LTS | Ubuntu 24.04 LTS |
+| Node.js | 22.12.0+ | Latest 22.x |
 
-- Node.js 22 или выше
-- 2+ vCPU, 4GB+ RAM
-- Ubuntu 22.04/24.04
-
-### Альтернативы GCP
-
-Эта инструкция написана для GCP, но OpenClaw можно запустить на любом Linux-сервере.
-
----
-
-## Оглавление
-
-1. [GCP Setup](#1-gcp-setup)
-2. [VM Creation](#2-vm-creation)
-3. [Tailscale Setup](#3-tailscale-setup)
-4. [OpenClaw Installation](#4-openclaw-installation)
-5. [Telegram Configuration](#5-telegram-configuration)
-6. [Management Commands](#6-management-commands)
-7. [Troubleshooting](#7-troubleshooting)
+**Observed resource usage** (e2-small, idle gateway + Telegram channel):
+- RAM: ~830 MB of 1.9 GB (+ 2 GB swap barely touched)
+- Disk: ~6.7 GB of 30 GB
+- CPU: <1% idle
 
 ---
 
-## 1. GCP Setup
+## Table of Contents
 
-### Создание проекта
+1. [GCP Project Setup](#1-gcp-project-setup)
+2. [Create the VM](#2-create-the-vm)
+3. [Tailscale and Network](#3-tailscale-and-network)
+4. [Install OpenClaw](#4-install-openclaw)
+5. [Configuration](#5-configuration)
+6. [Telegram Channel](#6-telegram-channel)
+7. [Systemd Service](#7-systemd-service)
+8. [Security Hardening](#8-security-hardening)
+9. [Cron Jobs and Automation](#9-cron-jobs-and-automation)
+10. [Management and Troubleshooting](#10-management-and-troubleshooting)
+
+---
+
+## 1. GCP Project Setup
 
 ```bash
-# Создать проект (без организации)
+# Create a project (or use an existing one)
 gcloud projects create <PROJECT_ID> --name="<PROJECT_NAME>"
 
-# ИЛИ с организацией (если есть)
-gcloud projects create <PROJECT_ID> --name="<PROJECT_NAME>" --organization=<ORGANIZATION_ID>
-
-# Привязать billing
+# Link billing
 gcloud billing projects link <PROJECT_ID> --billing-account=<BILLING_ACCOUNT_ID>
 
-# Включить Billing Budgets API
-gcloud services enable billingbudgets.googleapis.com --project=<PROJECT_ID>
+# Enable Compute Engine API
+gcloud services enable compute.googleapis.com --project=<PROJECT_ID>
 
-# Создать бюджет с алертами (опционально, но рекомендуется)
+# Set a budget alert (recommended — prevents surprise bills)
+gcloud services enable billingbudgets.googleapis.com --project=<PROJECT_ID>
 gcloud billing budgets create \
   --billing-account=<BILLING_ACCOUNT_ID> \
-  --display-name="<PROJECT_ID>-budget" \
-  --budget-amount=100USD \
+  --display-name="openclaw-budget" \
+  --budget-amount=50USD \
   --filter-projects="projects/<PROJECT_ID>" \
   --threshold-rule=percent=50 \
   --threshold-rule=percent=90 \
   --threshold-rule=percent=100
 ```
 
-### Включение API
-
-```bash
-gcloud services enable compute.googleapis.com --project=<PROJECT_ID>
-```
-
 ---
 
-## 2. VM Creation
+## 2. Create the VM
 
-### Параметры VM
+### VM type comparison
 
-| Параметр | Значение | Примечание |
-|----------|----------|------------|
-| Имя | openclaw | Можно любое |
-| Тип | e2-standard-2 (2 vCPU, 8GB RAM) | Минимум для комфортной работы |
-| Диск | 100GB SSD | Можно меньше (20-50GB) |
-| OS | Ubuntu 24.04 LTS | Или 22.04 LTS |
-| Регион | us-central1-a | Ближе к AI API серверам |
-| Публичный IP | Временный | Удаляется после настройки Tailscale |
+| Type | vCPU | RAM | $/month | Verdict |
+|------|------|-----|---------|---------|
+| e2-micro | 2 (shared) | 1 GB | ~$7 | Too little RAM. Gateway OOMs. |
+| **e2-small** | **2 (shared)** | **2 GB** | **~$17** | **Works with swap. Tested.** |
+| e2-medium | 2 (shared) | 4 GB | ~$28 | Comfortable. No swap needed. |
+| e2-standard-2 | 2 | 8 GB | ~$54 | Overkill for OpenClaw alone. |
 
-### Создание VM
+**Prices include 30 GB SSD.** `us-central1` region. Prices may vary.
+
+### Create the VM
 
 ```bash
 gcloud compute instances create openclaw \
   --project=<PROJECT_ID> \
   --zone=us-central1-a \
-  --machine-type=e2-standard-2 \
+  --machine-type=e2-small \
   --image-family=ubuntu-2404-lts-amd64 \
   --image-project=ubuntu-os-cloud \
-  --boot-disk-size=100GB \
+  --boot-disk-size=30GB \
   --boot-disk-type=pd-ssd \
   --tags=allow-ssh \
   --metadata=enable-oslogin=TRUE
 ```
 
-### Firewall для SSH
+### Add swap (required for e2-small)
+
+With 2 GB RAM the gateway uses ~830 MB at idle, but spikes during model calls. Swap prevents OOM kills.
+
+```bash
+# SSH in first
+gcloud compute ssh openclaw --zone=us-central1-a --project=<PROJECT_ID>
+
+# Create 2 GB swap
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# Verify: should show 2 GB swap
+free -h
+```
+
+### Firewall for initial SSH
 
 ```bash
 gcloud compute firewall-rules create allow-ssh \
@@ -158,50 +187,52 @@ gcloud compute firewall-rules create allow-ssh \
   --target-tags=allow-ssh
 ```
 
+### Estimated monthly cost
+
+| Component | Cost |
+|-----------|------|
+| e2-small VM | ~$12 |
+| 30 GB SSD | ~$5 |
+| Cloud NAT | ~$1 |
+| **Total** | **~$18/mo** |
+
 ---
 
-## 3. Tailscale Setup
+## 3. Tailscale and Network
 
-### Зачем Tailscale?
+### Why Tailscale?
 
-Tailscale создаёт защищённую сеть между вашими устройствами. Это позволяет:
-- Убрать публичный IP с сервера (безопаснее)
-- Подключаться к серверу из любой точки мира
-- Не открывать порты в firewall
+Tailscale creates an encrypted mesh VPN between your devices. Once configured, you can SSH to the VM by hostname (e.g., `ssh root@openclaw`) without a public IP. Free for personal use.
 
-### Установка Tailscale на VM
+### Install Tailscale on the VM
 
 ```bash
-# SSH на VM (с временным публичным IP)
-gcloud compute ssh openclaw --zone=us-central1-a --project=<PROJECT_ID>
-
-# Установить Tailscale
+# On the VM (via gcloud SSH while public IP still exists)
 curl -fsSL https://tailscale.com/install.sh | sh
 
-# Запустить и получить ссылку авторизации
-sudo tailscale up
-# Откройте ссылку в браузере и авторизуйте устройство
-
-# Включить Tailscale SSH (важно!)
-sudo tailscale up --ssh
+# Start Tailscale — this prints an auth URL
+sudo tailscale login --ssh
+# Open the URL in your browser to authorize the machine
 ```
 
-### Установка Tailscale локально
+> **Gotcha:** `tailscale up --ssh` blocks waiting for browser auth and can hang in non-interactive SSH sessions. Use `tailscale login --ssh` instead — it prints the URL and exits.
 
-Установите Tailscale на вашем компьютере (tailscale.com/download) и авторизуйтесь в том же аккаунте.
+### Install Tailscale on your local machine
 
-### Cloud NAT (для outbound без публичного IP)
+Download from https://tailscale.com/download. Log in with the same account.
 
-После настройки Tailscale нужен Cloud NAT для исходящего трафика:
+### Cloud NAT (outbound internet without public IP)
+
+After removing the public IP, the VM needs Cloud NAT for outgoing traffic (API calls, npm installs, Telegram polling).
 
 ```bash
-# Создать Cloud Router
+# Create a Cloud Router
 gcloud compute routers create nat-router \
   --project=<PROJECT_ID> \
   --network=default \
   --region=us-central1
 
-# Создать Cloud NAT
+# Create Cloud NAT
 gcloud compute routers nats create nat-config \
   --project=<PROJECT_ID> \
   --router=nat-router \
@@ -210,7 +241,7 @@ gcloud compute routers nats create nat-config \
   --auto-allocate-nat-external-ips
 ```
 
-### Удаление публичного IP
+### Remove the public IP
 
 ```bash
 gcloud compute instances delete-access-config openclaw \
@@ -219,394 +250,559 @@ gcloud compute instances delete-access-config openclaw \
   --access-config-name="external-nat"
 ```
 
-### Проверка подключения
+### Verify
 
 ```bash
-# С локальной машины (Tailscale должен быть запущен)
-tailscale status          # Должен показать openclaw
-tailscale ping openclaw   # Должен отвечать
-ssh root@openclaw         # Подключение через Tailscale
+# From your local machine
+tailscale status                # Should list "openclaw"
+ssh root@openclaw               # Should connect via Tailscale
+
+# On the VM — verify outbound works via NAT
+curl -sI https://google.com | head -3
 ```
+
+> **Gotcha:** First Tailscale SSH connection may require browser re-auth. The VM will print an auth URL — open it to approve.
 
 ---
 
-## 4. OpenClaw Installation
+## 4. Install OpenClaw
 
-### Создание пользователя
+### Create a dedicated user
+
+Run as root on the VM:
 
 ```bash
-ssh root@openclaw
 useradd -m -s /bin/bash openclaw
 ```
 
-### Установка Node.js 22
+### Install Node.js 22
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt-get install -y nodejs
-node --version  # Должно быть v22.x.x
+node --version   # Must be v22.12.0 or later
 ```
 
-### Установка OpenClaw
+### Install OpenClaw
 
-**Рекомендуемый способ (официальный инсталлятор):**
+Switch to the `openclaw` user:
 
 ```bash
 su - openclaw
-curl -fsSL https://openclaw.bot/install.sh | bash
+curl -fsSL https://openclaw.ai/install.sh | bash
 ```
 
-**Альтернатива через npm:**
+The installer will print a PATH warning. Fix it:
 
 ```bash
-npm install -g openclaw@latest
-```
-
-### Настройка PATH
-
-```bash
-# Добавить в ~/.bashrc
-echo 'export PATH="$HOME/.openclaw/bin:$PATH"' >> ~/.bashrc
+# The installer puts the binary in ~/.npm-global/bin/, not ~/.openclaw/bin/
+echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
-
-# Проверить установку
 openclaw --version
 ```
 
-### Onboarding
+> **Gotcha:** The installer's PATH suggestion in the output is wrong — it concatenates the existing `$PATH` into the export line. Use the simplified version above.
+
+### Interactive onboarding (optional)
+
+If you have a direct TTY (not piped SSH), run:
 
 ```bash
 openclaw onboard --install-daemon
 ```
 
-Wizard настроит:
-1. **Аутентификацию** — API ключ Anthropic (рекомендуется) или другой провайдер
-2. **Gateway** — фоновый сервис
-3. **Каналы** — Telegram, WhatsApp, Discord и др.
-4. **Security defaults** — базовые настройки безопасности
+This wizard walks you through provider auth, gateway setup, and channel config.
 
-### Права доступа (security)
+> **Gotcha:** Onboarding requires an interactive terminal. It fails via `ssh host "command"` or in scripts. If you're setting up headless, skip onboarding and configure manually (next section).
+
+---
+
+## 5. Configuration
+
+If onboarding ran successfully, skip this section. Otherwise, create the config manually.
+
+### Create directory structure
+
+```bash
+su - openclaw
+mkdir -p ~/.openclaw/agents/main/agent
+mkdir -p ~/.openclaw/agents/main/sessions
+mkdir -p ~/.openclaw/credentials
+mkdir -p ~/.openclaw/workspace/memory
+mkdir -p ~/.openclaw/workspace/skills
+```
+
+> **Gotcha:** The `agents/main/sessions` directory is not auto-created. Without it, `openclaw doctor` reports a critical error.
+
+### Create config file
+
+```bash
+cat > ~/.openclaw/openclaw.json << 'EOF'
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-opus-4-6"
+      },
+      "workspace": "/home/openclaw/.openclaw/workspace",
+      "compaction": {
+        "mode": "safeguard"
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "<YOUR_TELEGRAM_BOT_TOKEN>",
+      "dmPolicy": "pairing",
+      "groupPolicy": "allowlist",
+      "streamMode": "partial",
+      "groups": { "*": { "requireMention": true } }
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "<GENERATE_WITH_openssl_rand_-hex_24>"
+    }
+  },
+  "discovery": {
+    "mdns": { "mode": "off" }
+  },
+  "logging": {
+    "redactSensitive": "tools"
+  }
+}
+EOF
+chmod 600 ~/.openclaw/openclaw.json
+```
+
+Replace:
+- `<YOUR_TELEGRAM_BOT_TOKEN>` — from @BotFather
+- `<GENERATE_WITH_openssl_rand_-hex_24>` — run `openssl rand -hex 24` to generate
+
+**Model options:**
+- Anthropic: `anthropic/claude-opus-4-6`, `anthropic/claude-sonnet-4`
+- OpenAI: `openai/gpt-5.2`, `openai-codex/gpt-5.2` (subscription OAuth)
+- Google: `google/gemini-2.5-pro`
+
+For subscription-based OAuth (OpenAI Codex, Claude subscription), you need interactive onboarding or manual `auth-profiles.json` setup. API key auth is simpler for headless setups.
+
+### API key auth (headless)
+
+For API key providers, set keys via environment variables:
+
+```bash
+cat > ~/.openclaw/gateway.env << 'EOF'
+ANTHROPIC_API_KEY=sk-ant-...
+PATH=/home/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+HOME=/home/openclaw
+EOF
+chmod 600 ~/.openclaw/gateway.env
+```
+
+---
+
+## 6. Telegram Channel
+
+### Create a bot
+
+1. Open [@BotFather](https://t.me/BotFather) in Telegram
+2. Send `/newbot`, follow the prompts
+3. Copy the bot token
+
+Optional BotFather settings:
+- `/setjoingroups` — control whether the bot can be added to groups
+- `/setprivacy` — message visibility in groups (disable for `@mention` mode)
+
+### First contact (pairing)
+
+With `dmPolicy: "pairing"` (default):
+
+1. Send any message to your bot in Telegram
+2. The bot replies with a **pairing code** (valid 1 hour)
+3. Approve on the server:
+
+```bash
+openclaw pairing approve telegram <CODE>
+```
+
+After approval, the bot responds to your messages.
+
+**Alternative — allowlist** (skip pairing):
+
+```bash
+openclaw config set channels.telegram.dmPolicy allowlist
+openclaw config set channels.telegram.allowFrom '["YOUR_TELEGRAM_USER_ID"]'
+```
+
+Find your user ID: send a message to the bot and check `openclaw logs --follow` — it logs the sender ID.
+
+---
+
+## 7. Systemd Service
+
+If `openclaw onboard --install-daemon` didn't run (headless setup), create the service manually:
+
+```ini
+# /etc/systemd/system/openclaw.service
+[Unit]
+Description=OpenClaw Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+WorkingDirectory=/home/openclaw
+EnvironmentFile=/home/openclaw/.openclaw/gateway.env
+ExecStart=/home/openclaw/.npm-global/bin/openclaw gateway run
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> **Gotcha:** The binary path is `~/.npm-global/bin/openclaw`, not `~/.openclaw/bin/openclaw`. The installer uses npm's global prefix, not the `~/.openclaw` directory.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable openclaw
+sudo systemctl start openclaw
+sudo systemctl status openclaw
+```
+
+Verify the gateway is listening:
+
+```bash
+ss -tlnp | grep 18789
+# Should show: 127.0.0.1:18789 LISTEN
+```
+
+---
+
+## 8. Security Hardening
+
+### Run security audit
+
+```bash
+openclaw security audit --deep
+openclaw security audit --fix    # Auto-fixes common issues
+```
+
+> **Gotcha:** The installer creates `~/.openclaw/credentials/` with 775 permissions. The audit flags this as CRITICAL. Run `--fix` or manually `chmod 700` all directories.
+
+### File permissions checklist
 
 ```bash
 chmod 700 ~/.openclaw
+chmod 700 ~/.openclaw/credentials
+chmod 700 ~/.openclaw/agents
+chmod 700 ~/.openclaw/agents/main
+chmod 700 ~/.openclaw/agents/main/agent
+chmod 600 ~/.openclaw/openclaw.json
+chmod 600 ~/.openclaw/gateway.env
+chmod 600 ~/.openclaw/credentials/*
+chmod 600 ~/.openclaw/agents/*/agent/auth-profiles.json
 ```
 
----
+### Recommended hardening config
 
-## 5. Telegram Configuration
-
-### Создание бота
-
-1. Откройте @BotFather в Telegram
-2. Отправьте `/newbot`
-3. Введите имя бота (например: "My Assistant")
-4. Введите username (должен заканчиваться на "bot")
-5. Скопируйте полученный токен
-
-**Опциональные настройки в BotFather:**
-- `/setjoingroups` — разрешить/запретить добавление в группы
-- `/setprivacy` — управление видимостью сообщений в группах
-
-### Добавление токена
-
-**Через переменную окружения:**
-```bash
-export TELEGRAM_BOT_TOKEN="your_token_here"
-```
-
-**Или в конфиге `~/.openclaw/openclaw.json`:**
-```json5
-{
-  channels: {
-    telegram: {
-      enabled: true,
-      botToken: "your_token_here"
-    }
-  }
-}
-```
-
-### Pairing (первое подключение)
-
-При первом сообщении боту:
-1. Бот выдаст pairing code (действует 1 час)
-2. На сервере выполните:
-
-```bash
-openclaw pairing approve telegram <CODE>
-```
-
-**Альтернатива — allowlist:**
-```json5
-{
-  channels: {
-    telegram: {
-      dmPolicy: "allowlist",
-      allowFrom: [YOUR_TELEGRAM_USER_ID]
-    }
-  }
-}
-```
-
-Узнать свой user ID: отправьте сообщение боту и посмотрите в логах `openclaw logs --follow`.
-
-### Настройка групп
-
-```json5
-{
-  channels: {
-    telegram: {
-      groups: { "*": { requireMention: true } }
-    }
-  }
-}
-```
-
-Отключите Privacy Mode в BotFather (`/setprivacy`) чтобы бот видел все сообщения в группе.
-
----
-
-## 6. Management Commands
-
-### Gateway (основной процесс)
-
-```bash
-# Статус Gateway
-openclaw gateway status
-
-# Запустить Gateway (если не daemon)
-openclaw gateway --port 18789 --verbose
-
-# Принудительно перезапустить (если порт занят)
-openclaw gateway --force
-
-# Управление daemon (systemd)
-openclaw gateway install    # Установить как systemd сервис
-openclaw gateway stop       # Остановить
-openclaw gateway restart    # Перезапустить
-
-# Открыть Dashboard в браузере
-openclaw dashboard
-# Или вручную: http://127.0.0.1:18789/
-```
-
-### Каналы
-
-```bash
-# Статус всех каналов
-openclaw channels status
-
-# WhatsApp QR-код для авторизации
-openclaw channels login
-
-# Логи (live)
-openclaw logs --follow
-```
-
-### Security
-
-```bash
-# Базовый аудит
-openclaw security audit
-
-# Глубокий аудит (проверяет Gateway)
-openclaw security audit --deep
-
-# Автоисправление проблем
-openclaw security audit --fix
-```
-
-### Pairing
-
-```bash
-# Список ожидающих подтверждения
-openclaw pairing list telegram
-
-# Одобрить пользователя
-openclaw pairing approve telegram <CODE>
-```
-
-### Диагностика
-
-```bash
-openclaw doctor
-openclaw status
-openclaw health    # Альтернатива status
-```
-
-### Cron и память
-
-```bash
-openclaw cron list           # Список cron jobs
-openclaw cron run <id>       # Запустить вручную
-openclaw memory search "query"  # Поиск по памяти
-```
-
----
-
-## 7. Troubleshooting
-
-### Gateway не запускается
-
-```bash
-# Проверить, не запущен ли уже
-ps aux | grep openclaw
-
-# Вариант 1: Принудительно перезапустить (закроет старый процесс)
-openclaw gateway --force --verbose
-
-# Вариант 2: Убить вручную и запустить
-pkill -f openclaw
-openclaw gateway --port 18789 --verbose
-```
-
-### Telegram не отвечает
-
-```bash
-# Проверить статус
-openclaw channels status
-
-# Посмотреть логи
-openclaw logs --follow
-
-# Проверить токен
-echo $TELEGRAM_BOT_TOKEN
-```
-
-### Tailscale offline
-
-```bash
-# На VM
-sudo systemctl restart tailscaled
-sudo tailscale up --ssh
-
-# Проверить
-tailscale status
-```
-
-### Проблемы с сетью
-
-```bash
-# Интернет работает?
-curl -I https://api.anthropic.com
-
-# Cloud NAT работает?
-curl -I https://google.com
-```
-
-### VM не имеет интернета после удаления публичного IP
-
-Убедитесь, что Cloud NAT настроен (см. раздел 3).
-
----
-
-## Quick Reference
-
-### SSH доступ
-
-```bash
-ssh root@openclaw          # Через Tailscale
-su - openclaw              # Переключиться на пользователя
-export PATH="$HOME/.openclaw/bin:$PATH"
-```
-
-### Dashboard через туннель
-
-**Вариант 1: SSH туннель**
-```bash
-# На локальной машине
-ssh -N -L 18789:127.0.0.1:18789 root@openclaw
-
-# Открыть в браузере
-http://localhost:18789/
-```
-
-**Вариант 2: Tailscale Serve (рекомендуется)**
-
-Добавить в `~/.openclaw/openclaw.json`:
 ```json5
 {
   gateway: {
-    bind: "loopback",
+    mode: "local",
+    bind: "loopback",          // Never change to 0.0.0.0
+    auth: { mode: "token" }    // Always require auth
+  },
+  channels: {
+    telegram: {
+      dmPolicy: "pairing",     // Or "allowlist"
+      groupPolicy: "allowlist",
+      groups: { "*": { requireMention: true } }
+    }
+  },
+  discovery: {
+    mdns: { mode: "off" }      // Prevents info disclosure on LAN
+  },
+  logging: {
+    redactSensitive: "tools"   // Redact tool args in logs
+  }
+}
+```
+
+### Sandbox mode (optional, requires Docker)
+
+Isolate tool execution in containers:
+
+```bash
+sudo apt-get install -y docker.io
+sudo usermod -aG docker openclaw
+# Log out and back in for group to take effect
+```
+
+```json5
+{
+  agents: {
+    defaults: {
+      sandbox: {
+        mode: "all",
+        scope: "agent",
+        workspaceAccess: "rw"   // "ro" or "none" for stricter isolation
+      }
+    }
+  }
+}
+```
+
+### Tool access control
+
+Restrict dangerous tools for non-owner agents:
+
+```json5
+{
+  agents: {
+    defaults: {
+      tools: {
+        deny: ["browser", "web_fetch", "exec"]
+      }
+    }
+  }
+}
+```
+
+### Skills safety
+
+- **Never install skills from untrusted sources** (Feb 2026: 341 malicious ClawHub skills found)
+- Review `SKILL.md` contents before installing any skill
+- Skills can read environment variables and execute code — treat as trusted code
+- Per-agent skills: `~/.openclaw/workspace/skills/`
+- Shared skills: `~/.openclaw/skills/`
+
+### Credential management
+
+- Store API keys in `gateway.env` (permissions 600), not inline in config
+- Use `EnvironmentFile=` in systemd, not `Environment=`
+- Rotate all tokens after any suspected compromise
+- Never commit credentials to git
+
+### Incident response
+
+If you suspect compromise:
+
+1. **Stop:** `systemctl stop openclaw`
+2. **Isolate:** Verify `gateway.bind` is `loopback`
+3. **Rotate:** Gateway token, model API keys, channel bot tokens
+4. **Review:** Logs at `/tmp/openclaw/openclaw-YYYY-MM-DD.log` and session transcripts at `~/.openclaw/agents/<agentId>/sessions/*.jsonl`
+5. **Audit:** `openclaw security audit --deep`
+6. **Restart** only after audit is clean
+
+---
+
+## 9. Cron Jobs and Automation
+
+### Create scheduled jobs
+
+```bash
+# Daily morning briefing at 10:00 (delivered to Telegram)
+openclaw cron add \
+  --name "Morning Briefing" \
+  --cron "0 10 * * *" \
+  --tz "America/New_York" \
+  --session isolated \
+  --message "Good morning. Check MEMORY.md and summarize today's priorities." \
+  --deliver \
+  --channel telegram \
+  --to "<YOUR_TELEGRAM_USER_ID>"
+
+# Weekly review every Monday at 11:00
+openclaw cron add \
+  --name "Weekly Review" \
+  --cron "0 11 * * 1" \
+  --tz "America/New_York" \
+  --session isolated \
+  --message "Weekly review. Read memory logs from the past 7 days and summarize progress." \
+  --deliver \
+  --channel telegram \
+  --to "<YOUR_TELEGRAM_USER_ID>"
+```
+
+### Manage cron jobs
+
+```bash
+openclaw cron list              # List all jobs with next run time
+openclaw cron run <JOB_ID>      # Trigger manually
+openclaw cron remove <JOB_ID>   # Delete a job
+```
+
+### Heartbeat
+
+OpenClaw runs a heartbeat check every 30 minutes by default. Configure checks in `~/.openclaw/workspace/HEARTBEAT.md`. If nothing requires attention, the agent responds with `HEARTBEAT_OK` (no notification sent).
+
+---
+
+## 10. Management and Troubleshooting
+
+### Essential commands
+
+```bash
+# Status and health
+openclaw status               # Overview of gateway, channels, sessions
+openclaw status --deep        # With live probes
+openclaw health               # System health check
+openclaw doctor               # Validate config, detect issues, migrate legacy
+openclaw doctor --fix         # Auto-fix detected issues
+
+# Gateway control
+openclaw gateway status
+openclaw gateway restart
+openclaw gateway stop
+openclaw gateway --force      # Kill and restart
+
+# Channels
+openclaw channels status      # Connection status for all channels
+openclaw logs --follow        # Live gateway logs
+
+# Security
+openclaw security audit
+openclaw security audit --deep
+openclaw security audit --fix
+
+# Memory
+openclaw memory search "query"
+
+# Update
+curl -fsSL https://openclaw.ai/install.sh | bash   # Re-run installer
+openclaw doctor && openclaw gateway restart          # Post-update
+```
+
+### Dashboard access
+
+The Control UI runs at `http://127.0.0.1:18789/`. Access it via:
+
+**SSH tunnel:**
+```bash
+ssh -N -L 18789:127.0.0.1:18789 user@gateway-host
+# Open http://localhost:18789/ in your browser
+```
+
+**Tailscale Serve:**
+```json5
+{
+  gateway: {
     tailscale: { mode: "serve" }
   }
 }
 ```
+Access at `https://<hostname>.<tailnet>.ts.net/`
 
-Доступ: `https://openclaw.<tailnet-name>.ts.net/`
+### Troubleshooting
 
-### Важные пути
+**Gateway won't start:**
+```bash
+journalctl -u openclaw --no-pager -n 50     # Check systemd logs
+openclaw gateway --force --verbose           # Force restart with debug output
+```
 
-| Путь | Описание |
-|------|----------|
-| `~/.openclaw/` | Конфигурация и состояние |
-| `~/.openclaw/openclaw.json` | Основной конфиг (permissions 600) |
-| `~/.openclaw/credentials/` | OAuth и credentials |
-| `~/.openclaw/agents/<agentId>/` | Данные агентов |
-| `~/.openclaw/workspace/` | Workspace агента (SOUL.md, MEMORY.md и др.) |
-| `~/.openclaw/workspace/skills/` | Per-agent skills |
-| `~/.openclaw/skills/` | Shared skills (все агенты) |
-| `/tmp/openclaw/` | Логи
+**Telegram not responding:**
+```bash
+openclaw channels status       # Check channel state
+openclaw logs --follow         # Watch for errors
+```
 
----
+Check that the bot token is correct and that no other instance is polling the same token (Telegram allows only one poller per bot token).
 
-## Security Checklist
+**Tailscale SSH needs re-auth:**
+```bash
+sudo tailscale login --ssh     # Prints a new auth URL
+```
 
-### Что делает эта инструкция для безопасности
+**No internet after removing public IP:**
 
-1. **Нет публичного IP** — сервер недоступен из интернета
-2. **Tailscale** — шифрованное соединение между устройствами
-3. **Cloud NAT** — только исходящий трафик, входящий заблокирован
-4. **Dedicated user** — `openclaw` с ограниченными правами
-5. **Права доступа** — 700 на директорию, 600 на конфиги
-6. **Pairing mode** — новые пользователи требуют одобрения
-7. **Gateway на loopback** — Dashboard недоступен извне
+Verify Cloud NAT is configured:
+```bash
+curl -sI https://google.com | head -1    # Should return HTTP/2 301
+```
 
-### Рекомендуемые permissions
+If it fails, check that the Cloud Router and NAT exist in the same region as the VM.
 
-| Путь | Права |
-|------|-------|
-| `~/.openclaw/` | 700 |
-| `~/.openclaw/openclaw.json` | 600 |
-| `~/.openclaw/credentials/*` | 600 |
-| `~/.openclaw/agents/*/agent/auth-profiles.json` | 600 |
+**Bootstrap files not taking effect:**
 
-### Дополнительные рекомендации
+Send `/new` in the chat to start a fresh session. Bootstrap files (SOUL.md, USER.md, MEMORY.md, etc.) are only read at session start, not mid-conversation.
 
-- Используйте современные модели (Claude Opus) для агентов с инструментами
-- Требуйте mention в публичных группах (`requireMention: true`)
-- Отключайте `exec`/`browser`/`web_fetch` для агентов с недоверенным вводом
-- Рассмотрите sandbox mode: `agents.defaults.sandbox.mode: "all"`
-- Используйте Tailscale Serve вместо публичного доступа
+**Legacy migration (from Moltbot/Clawdbot):**
+
+```bash
+openclaw doctor --fix    # Auto-migrates legacy paths and config keys
+```
 
 ---
 
-## Стоимость (GCP)
+## Key Paths
 
-| Компонент | Стоимость/мес |
-|-----------|---------------|
-| e2-standard-2 | ~$49 |
-| 100GB SSD | ~$17 |
-| Cloud NAT | ~$1 |
-| **Итого** | **~$67** |
+| Path | Purpose | Permissions |
+|------|---------|-------------|
+| `~/.openclaw/` | Config root | 700 |
+| `~/.openclaw/openclaw.json` | Main config | 600 |
+| `~/.openclaw/gateway.env` | Environment variables | 600 |
+| `~/.openclaw/credentials/` | Channel tokens, OAuth | 700 |
+| `~/.openclaw/agents/<id>/` | Agent data | 700 |
+| `~/.openclaw/agents/<id>/sessions/` | Conversation transcripts | 700 |
+| `~/.openclaw/workspace/` | Agent workspace (bootstrap files, skills, memory) | 700 |
+| `~/.npm-global/bin/openclaw` | CLI binary (npm global install) | — |
+| `/tmp/openclaw/` | Logs | — |
 
-Можно сэкономить:
-- e2-small (2 vCPU, 2GB RAM) — ~$12/мес
-- 30GB SSD — ~$5/мес
-- **Минимум: ~$18/мес**
+## Bootstrap Files
 
-Рекомендуется настроить budget alert.
+Place these in `~/.openclaw/workspace/` to customize the agent:
+
+| File | Purpose |
+|------|---------|
+| `SOUL.md` | Persona, tone, behavioral boundaries |
+| `USER.md` | Information about you (the operator) |
+| `IDENTITY.md` | Agent name, emoji, vibe |
+| `MEMORY.md` | Long-term curated memory |
+| `AGENTS.md` | Operational instructions |
+| `TOOLS.md` | Tool usage guidelines |
+| `HEARTBEAT.md` | Periodic check tasks |
+
+Empty files are skipped. Send `/new` in chat after editing to reload.
 
 ---
 
-## Placeholders
+## Gotchas Summary
 
-Замените в командах:
+Issues discovered during real deployment:
 
-| Placeholder | Описание | Где взять |
-|-------------|----------|-----------|
-| `<PROJECT_ID>` | ID проекта GCP | Придумайте уникальный (латиница, цифры, дефисы) |
-| `<PROJECT_NAME>` | Название проекта | Любое понятное вам |
-| `<ORGANIZATION_ID>` | ID организации | `gcloud organizations list` (опционально) |
-| `<BILLING_ACCOUNT_ID>` | ID billing account | `gcloud billing accounts list` |
-| `<CODE>` | Pairing code | Выдаёт бот при первом сообщении |
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| `openclaw: command not found` | Installer uses `~/.npm-global/bin/`, not `~/.openclaw/bin/` | Add `~/.npm-global/bin` to PATH |
+| Onboarding fails via SSH | Requires interactive TTY (`/dev/tty`) | Configure manually or use a direct terminal |
+| OAuth auth fails headless | OAuth flow requires browser redirect | Use API key auth for headless, or copy `auth-profiles.json` from another machine |
+| `credentials dir writable by others` | Installer creates dirs with 775 | `chmod 700 ~/.openclaw/credentials` |
+| `Session store dir missing` | Not auto-created on fresh install | `mkdir -p ~/.openclaw/agents/main/sessions` |
+| Two bots fight over token | Telegram allows one poller per token | Stop old instance before starting new one |
+| VM OOM on e2-small | 2 GB RAM, gateway spikes during inference | Add 2 GB swap file |
+
+---
+
+## Further Reading
+
+- [OpenClaw Documentation](https://docs.openclaw.ai/)
+- [Security Guide](https://docs.openclaw.ai/gateway/security)
+- [Getting Started](https://docs.openclaw.ai/start/getting-started)
+- [Updating](https://docs.openclaw.ai/install/updating)
+- [Cron Jobs](https://docs.openclaw.ai/automation/cron-jobs)
+- [Skills](https://docs.openclaw.ai/tools/skills)
+- [Telegram Channel](https://docs.openclaw.ai/channels/telegram)
+- [Tailscale Setup](https://docs.openclaw.ai/gateway/tailscale)
+
+---
+
+## License
+
+This guide is provided as-is under the [MIT License](https://opensource.org/licenses/MIT). Not affiliated with OpenClaw.
