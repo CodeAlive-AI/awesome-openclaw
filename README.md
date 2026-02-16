@@ -12,7 +12,7 @@ A curated collection of resources for [OpenClaw](https://openclaw.ai/) — the o
 
 - **[Use Cases](use-cases/)** — Real-world scenarios organized by [role](use-cases/README.md#role-based-use-cases) (14 IT professions) and [category](use-cases/README.md#category-based-use-cases) (7 functional areas).
 
-- **[OpenClaw for You](https://app.codealive.ai/public/chat/openclaw-for-you)** — An AI consultant that finds the most relevant OpenClaw use cases for your specific role and workflow. Describe what you do, and it gives personalized recommendations — starting with the highest-impact ones.
+- 🔥 **[OpenClaw for You](https://app.codealive.ai/public/chat/openclaw-for-you)** — An AI consultant that finds the most relevant OpenClaw use cases for your specific role and workflow. Describe what you do, and it gives personalized recommendations — starting with the highest-impact ones.
 
 ---
 
