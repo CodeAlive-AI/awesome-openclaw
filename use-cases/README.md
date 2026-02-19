@@ -66,6 +66,73 @@ The table below summarizes how OpenClaw delivers value to each IT role, highligh
 
 ---
 
+## Community Use Cases (Step-by-Step Tutorials)
+
+Detailed, step-by-step tutorials with real deployment examples. Each includes pain points, required skills, setup instructions, and key insights from real users.
+
+Sourced from [awesome-openclaw-usecases](https://github.com/hesamsheikh/awesome-openclaw-usecases).
+
+### Social Media
+
+| # | Name | Description |
+|---|------|-------------|
+| 1 | [Daily Reddit Digest](community/daily-reddit-digest.md) | Summarize a curated digest of your favourite subreddits, based on your preferences |
+| 2 | [Daily YouTube Digest](community/daily-youtube-digest.md) | Get daily summaries of new videos from your favorite channels |
+| 3 | [X Account Analysis](community/x-account-analysis.md) | Get a qualitative analysis of your X account |
+| 4 | [Multi-Source Tech News Digest](community/multi-source-tech-news-digest.md) | Aggregate and deliver quality-scored tech news from 109+ sources (RSS, Twitter/X, GitHub, web search) |
+
+### Creative & Building
+
+| # | Name | Description |
+|---|------|-------------|
+| 5 | [Goal-Driven Autonomous Tasks](community/overnight-mini-app-builder.md) | Brain dump goals → agent autonomously generates, schedules, and completes daily tasks, including building mini-apps overnight |
+| 6 | [YouTube Content Pipeline](community/youtube-content-pipeline.md) | Automate video idea scouting, research, and tracking for a YouTube channel |
+| 7 | [Multi-Agent Content Factory](community/content-factory.md) | Multi-agent content pipeline in Discord — research, writing, and thumbnail agents in dedicated channels |
+
+### Infrastructure & DevOps
+
+| # | Name | Description |
+|---|------|-------------|
+| 8 | [n8n Workflow Orchestration](community/n8n-workflow-orchestration.md) | Delegate API calls to n8n workflows via webhooks — agent never touches credentials |
+| 9 | [Self-Healing Home Server](community/self-healing-home-server.md) | Always-on infrastructure agent with SSH access, cron jobs, and self-healing across your home network |
+
+### Productivity
+
+| # | Name | Description |
+|---|------|-------------|
+| 10 | [Autonomous Project Management](community/autonomous-project-management.md) | Coordinate multi-agent projects using STATE.yaml pattern — subagents work in parallel |
+| 11 | [Multi-Channel AI Customer Service](community/multi-channel-customer-service.md) | Unify WhatsApp, Instagram, Email, and Google Reviews in one AI-powered inbox |
+| 12 | [Phone-Based Personal Assistant](community/phone-based-personal-assistant.md) | Access your AI agent via phone calls and SMS, hands-free voice assistance |
+| 13 | [Inbox De-clutter](community/inbox-declutter.md) | Summarize newsletters and send you a digest as an email |
+| 14 | [Personal CRM](community/personal-crm.md) | Automatically discover and track contacts from email and calendar with natural language queries |
+| 15 | [Health & Symptom Tracker](community/health-symptom-tracker.md) | Track food intake and symptoms to identify triggers, with scheduled check-in reminders |
+| 16 | [Multi-Channel Personal Assistant](community/multi-channel-assistant.md) | Route tasks across Telegram, Slack, email, and calendar from a single AI assistant |
+| 17 | [Project State Management](community/project-state-management.md) | Event-driven project tracking with automatic context capture, replacing static Kanban boards |
+| 18 | [Dynamic Dashboard](community/dynamic-dashboard.md) | Real-time dashboard with parallel data fetching from APIs, databases, and social media |
+| 19 | [Todoist Task Manager](community/todoist-task-manager.md) | Sync reasoning and progress logs to Todoist for full agent transparency |
+| 20 | [Family Calendar & Household Assistant](community/family-calendar-household-assistant.md) | Aggregate family calendars into morning briefings, monitor messages for appointments, manage household inventory |
+| 21 | [Multi-Agent Specialized Team](community/multi-agent-team.md) | Run multiple specialized agents (strategy, dev, marketing, business) as a coordinated team via Telegram |
+| 22 | [Custom Morning Brief](community/custom-morning-brief.md) | Fully customized daily briefing — news, tasks, content drafts, and AI-recommended actions — texted every morning |
+| 23 | [Second Brain](community/second-brain.md) | Text anything to your bot to remember it, then search through all memories in a custom Next.js dashboard |
+| 24 | [Event Guest Confirmation](community/event-guest-confirmation.md) | Call event guests one-by-one to confirm attendance via automated AI voice calls |
+
+### Research & Learning
+
+| # | Name | Description |
+|---|------|-------------|
+| 25 | [AI Earnings Tracker](community/earnings-tracker.md) | Track tech/AI earnings reports with automated previews, alerts, and detailed summaries |
+| 26 | [Personal Knowledge Base (RAG)](community/knowledge-base-rag.md) | Build a searchable knowledge base by dropping URLs, tweets, and articles into chat |
+| 27 | [Market Research & Product Factory](community/market-research-product-factory.md) | Mine Reddit and X for real pain points, then have OpenClaw build MVPs that solve them |
+| 28 | [Semantic Memory Search](community/semantic-memory-search.md) | Vector-powered semantic search over OpenClaw markdown memory files with hybrid retrieval |
+
+### Finance & Trading
+
+| # | Name | Description |
+|---|------|-------------|
+| 29 | [Polymarket Autopilot](community/polymarket-autopilot.md) | Automated paper trading on prediction markets with backtesting and daily performance reports |
+
+---
+
 ## Getting Started
 
 OpenClaw automates the busywork and augments your expertise, letting you accomplish more in less time. From writing code and managing servers to drafting reports and scanning for threats, OpenClaw's ability to *"remember, execute, and proactively assist"* has delivered tangible wins for early adopters.
@@ -90,3 +157,5 @@ In the words of one user, *"After a few weeks in, this is the first time I truly
 12. AI Multiple Research - *"OpenClaw Use Cases and Security [2026]"*
 13. Forrester - *"Ready For OpenClaw To Spill Into Your Environment"*
 14. PCMag - *"OpenClaw Is the Hot New AI Agent"*
+15. [awesome-openclaw-usecases](https://github.com/hesamsheikh/awesome-openclaw-usecases) - Community-curated collection of 29 detailed step-by-step use cases with real deployment examples
+16. [Forward Future](https://www.forwardfuture.ai/p/what-people-are-actually-doing-with-openclaw-25-use-cases) - *"What People Are Actually Doing With OpenClaw: 25+ Use Cases"* — free 41-page PDF ebook with 50+ working automations covering email, business operations, development workflows, content production, and home automation
